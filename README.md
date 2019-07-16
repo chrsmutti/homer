@@ -1,0 +1,3 @@
+# homer
+
+A dotfiles manager.
