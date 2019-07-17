@@ -5,3 +5,4 @@ authors = ["Christian Mutti <chrsmutti@gmail.com>"]
 edition = "2018"
 
 [dependencies]
+dirs = "2.0.1"
