@@ -1,10 +1,12 @@
-use dirs;
-use failure;
-use structopt;
+mod errors;
 
-use failure::{bail, Fail};
+use std::fs;
 use std::path::{Path, PathBuf};
-use std::{env, fs, io, os::unix};
+
+use dirs;
+use errors::HomerError;
+use failure::bail;
+use structopt;
 use structopt::StructOpt;
 
 #[derive(StructOpt)]
@@ -31,34 +33,6 @@ struct Opt {
     input: Option<PathBuf>,
 }
 
-#[derive(Fail, Debug)]
-enum HomerError {
-    #[fail(display = "No directory found at: {:?}", path)]
-    /// If the input directory, or default `./home` directory are not found.
-    NotFound { path: PathBuf },
-
-    #[fail(display = "No $HOME")]
-    /// If failed to retrieve the user's home directory.
-    NoHome,
-
-    #[fail(
-        display = "Symlink at {:?} already exists, points to {:?}.
-                   Use --force to do the operation anyway.",
-        spath, sdest
-    )]
-    /// If a symlink already exists at a desired `spath`, it points to `sdest`.
-    AlreadyExists { spath: PathBuf, sdest: PathBuf },
-
-    #[fail(
-        display = "Regular file already exists at: {:?}.
-                   Use --backup to create a backup of this file, 
-                   or --force do delete file without backup.",
-        dest
-    )]
-    /// If a regular file exists at a desired `path`.
-    RegularFileAtDest { dest: PathBuf },
-}
-
 type Result<T> = std::result::Result<T, failure::Error>;
 
 #[macro_use]
@@ -73,10 +47,17 @@ mod homer {
     }
 }
 
-fn main() -> Result<()> {
-    let opt = Opt::from_args();
+fn main() {
+    if let Err(e) = run(Opt::from_args()) {
+        eprintln!("{}", e);
+        std::process::exit(1);
+    }
+}
+
+/// Returns `Err(..)` upon fatal errors. Otherwise, returns `Ok(())`.
+fn run(opt: Opt) -> Result<()> {
     let input = opt.input.clone().unwrap_or({
-        let mut buf = env::current_dir()?;
+        let mut buf = std::env::current_dir()?;
         buf.push("home");
 
         buf
@@ -137,19 +118,18 @@ fn process_dir(path: &PathBuf, dest: &PathBuf, opt: &Opt) -> Result<()> {
                 fs::create_dir(&dest)?;
             }
         }
-        Err(ref e) if e.kind() == io::ErrorKind::NotFound => {
+        Err(ref e) if e.kind() == std::io::ErrorKind::NotFound => {
             verbose!(opt.verbose, "Creating directory at {:?}", dest);
             fs::create_dir(&dest)?;
         }
         Err(e) => bail!(e),
     }
 
-    fs::read_dir(path)?
-        .filter_map(|f| f.ok())
-        .for_each(|f| match process_entry(&f, &dest, &opt) {
-            Err(e) => eprintln!("{}", e),
-            _ => {}
-        });
+    fs::read_dir(path)?.filter_map(|f| f.ok()).for_each(|f| {
+        if let Err(e) = process_entry(&f, &dest, &opt) {
+            eprintln!("{}", e)
+        }
+    });
 
     Ok(())
 }
@@ -169,7 +149,7 @@ fn process_dir(path: &PathBuf, dest: &PathBuf, opt: &Opt) -> Result<()> {
 /// * A regular file already exists at `path` and no `backup` option was passed.
 fn process_file(path: &PathBuf, dest: &PathBuf, opt: &Opt) -> Result<()> {
     match fs::symlink_metadata(dest) {
-        Err(ref e) if e.kind() == io::ErrorKind::NotFound => {}
+        Err(ref e) if e.kind() == std::io::ErrorKind::NotFound => {}
         Ok(stat) => {
             if stat.file_type().is_symlink() {
                 handle_symlink_at_dest(dest, opt)?;
@@ -181,7 +161,7 @@ fn process_file(path: &PathBuf, dest: &PathBuf, opt: &Opt) -> Result<()> {
     }
 
     verbose!(opt.verbose, "Linking {:?} to destination: {:?}", path, dest);
-    unix::fs::symlink(path, dest)?; // This makes the binary unix-only ¯\_(ツ)_/¯.
+    std::os::unix::fs::symlink(path, dest)?; // This makes the binary unix-only ¯\_(ツ)_/¯.
 
     Ok(())
 }
