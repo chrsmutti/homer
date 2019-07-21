@@ -22,6 +22,7 @@ FLAGS:
     -b, --backup     If a regular file is found at a location that a symlink or directory should be created, the file
                      will be backed up to a file with the same name, with a .bkp extension. Any old backup file will be
                      overwritten.
+        --dry-run    Do not actually change anything. Use with --verbose to se all steps.
     -f, --force      Force symlink creation even if a regular file exists at the location (deletes the old file).
     -h, --help       Prints help information
     -V, --version    Prints version information
@@ -29,6 +30,13 @@ FLAGS:
 
 ARGS:
     <input>    Directory containing files to link into user's home directory. (defaults to ./home)
+```
+
+Before running it for real, you could inspect what homer will do on a run by
+running:
+
+```
+homer -v --dry-run
 ```
 
 ### This could be a bash script!!1!

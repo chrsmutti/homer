@@ -12,20 +12,24 @@ use structopt::StructOpt;
 #[derive(StructOpt)]
 /// "Doh!" A CLI for managing your dotfiles!
 struct Opt {
-    #[structopt(short = "v", long = "verbose")]
+    #[structopt(short, long)]
     /// Show verbose output about the operations.
     verbose: bool,
 
-    #[structopt(short = "f", long = "force")]
+    #[structopt(short, long)]
     /// Force symlink creation even if a regular file exists at the location
     /// (deletes the old file).
     force: bool,
 
-    #[structopt(short = "b", long = "backup")]
+    #[structopt(short, long)]
     /// If a regular file is found at a location that a symlink or directory
     /// should be created, the file will be backed up to a file with the same
     /// name, with a .bkp extension. Any old backup file will be overwritten.
     backup: bool,
+
+    #[structopt(long = "dry-run")]
+    /// Do not actually change anything. Use with --verbose to se all steps.
+    dry_run: bool,
 
     /// Directory containing files to link into user's home directory.
     /// (defaults to ./home)
@@ -115,12 +119,17 @@ fn process_dir(path: &PathBuf, dest: &PathBuf, opt: &Opt) -> Result<()> {
                 }
 
                 verbose!(opt.verbose, "Creating directory at {:?}", dest);
-                fs::create_dir(&dest)?;
+
+                if !opt.dry_run {
+                    fs::create_dir(&dest)?;
+                }
             }
         }
         Err(ref e) if e.kind() == std::io::ErrorKind::NotFound => {
             verbose!(opt.verbose, "Creating directory at {:?}", dest);
-            fs::create_dir(&dest)?;
+            if !opt.dry_run {
+                fs::create_dir(&dest)?;
+            }
         }
         Err(e) => bail!(e),
     }
@@ -160,8 +169,15 @@ fn process_file(path: &PathBuf, dest: &PathBuf, opt: &Opt) -> Result<()> {
         Err(e) => bail!(e),
     }
 
-    verbose!(opt.verbose, "Linking {:?} to destination: {:?}", path, dest);
-    std::os::unix::fs::symlink(path, dest)?; // This makes the binary unix-only ¯\_(ツ)_/¯.
+    verbose!(
+        opt.verbose,
+        "Creating link at: {:?}, points to: {:?}",
+        dest,
+        path
+    );
+    if !opt.dry_run {
+        std::os::unix::fs::symlink(path, dest)?; // This makes the binary unix-only ¯\_(ツ)_/¯.
+    }
 
     Ok(())
 }
@@ -179,7 +195,9 @@ fn handle_symlink_at_dest(dest: &PathBuf, opt: &Opt) -> Result<()> {
     }
 
     println!("Removing symlink at {:?}, due to --force (-f) flag.", dest);
-    fs::remove_file(dest)?;
+    if !opt.dry_run {
+        fs::remove_file(dest)?;
+    }
 
     Ok(())
 }
@@ -199,13 +217,17 @@ fn handle_regular_file_at_dest(dest: &PathBuf, opt: &Opt) -> Result<()> {
             "Backing up {:?} to {:?} due to --backup (-b) flag.",
             dest, bpath
         );
-        fs::rename(dest, bpath)?;
+        if !opt.dry_run {
+            fs::rename(dest, bpath)?;
+        }
     } else if opt.force {
         println!(
             "Removing regular file at {:?}, due to --force (-f) flag.",
             dest
         );
-        fs::remove_file(dest)?
+        if !opt.dry_run {
+            fs::remove_file(dest)?
+        }
     }
 
     Ok(())
