@@ -1,5 +1,9 @@
 # homer
 
+<div>
+    <img src="https://img.shields.io/github/license/chrsmutti/homer" />
+</div>
+
 "Doh!" A CLI for managing your dotfiles!
 
 ## Build & Install
@@ -80,3 +84,7 @@ homer -v --dry-run
 ### This could be a bash script!!1!
 
 Yes.
+
+# License
+
+`homer` is licensed under the [MIT License](https://opensource.org/licenses/MIT).
