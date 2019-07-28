@@ -33,7 +33,11 @@ struct Opt {
     dry_run: bool,
 
     /// File containing ignore patterns, very similar to .gitingore.
-    #[structopt(parse(from_os_str), long = "ignore-file", default_value = ".homerignore")]
+    #[structopt(
+        parse(from_os_str),
+        long = "ignore-file",
+        default_value = ".homerignore"
+    )]
     ignore_file: PathBuf,
 
     /// Directory containing files to link into user's home directory.
@@ -67,7 +71,7 @@ fn main() {
 fn run(opt: Opt) -> Result<()> {
     let input = fs::canonicalize(&opt.input)?;
     if !input.is_dir() {
-        bail!(HomerError::NotFound { path: input });
+        bail!(HomerError::NotFound(input));
     }
 
     let home = dirs::home_dir().ok_or(HomerError::NoHome)?;
@@ -202,7 +206,7 @@ fn process_dir(dest: &PathBuf, children: Vec<Entry>, opt: &Opt) -> Result<()> {
             } else if opt.force {
                 force_remove(dest, opt)?;
             } else {
-                bail!(HomerError::RegularFileAtDest { dest: dest.into() }); // TODO: redo errors
+                bail!(HomerError::Blocked(dest.into()));
             }
 
             verbose!(opt.verbose, "Creating directory at {:?}", dest);
@@ -246,10 +250,7 @@ fn process_file(path: &PathBuf, dest: &PathBuf, opt: &Opt) -> Result<()> {
             if opt.force {
                 force_remove(dest, opt)?;
             } else {
-                bail!(HomerError::AlreadyExists {
-                    spath: dest.into(),
-                    sdest: fs::canonicalize(dest)?,
-                }); // TODO: redo errors
+                bail!(HomerError::Blocked(dest.into()));
             }
         }
         Ok(stat) => {
@@ -258,7 +259,7 @@ fn process_file(path: &PathBuf, dest: &PathBuf, opt: &Opt) -> Result<()> {
             } else if opt.force {
                 force_remove(dest, opt)?;
             } else {
-                bail!(HomerError::RegularFileAtDest { dest: dest.into() }); // TODO: redo errors
+                bail!(HomerError::Blocked(dest.into()));
             }
         }
         Err(e) => {
