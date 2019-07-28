@@ -45,6 +45,13 @@ $HOME
 └── file -> ~/dotfiles/file
 ```
 
+Before running it for real, you could inspect what homer will do on a run by
+running:
+
+```
+homer -v --dry-run
+```
+
 You can also create a `.homerignore` that will be used to ignore certain paths
 whenever `homer` is ran.
 
@@ -72,13 +79,6 @@ OPTIONS:
 
 ARGS:
     <input>    Directory containing files to link into user's home directory. [default: ./home]
-```
-
-Before running it for real, you could inspect what homer will do on a run by
-running:
-
-```
-homer -v --dry-run
 ```
 
 ### This could be a bash script!!1!
