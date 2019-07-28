@@ -4,11 +4,31 @@
 
 ## Usage
 
-You can run `homer` from a directory containing a `home` directory, or pass in
-an input directory.
+Create a `dotfiles` directory anywhere you'd like, this directory can be a git
+repo, for easy sharing and versioning. Inside it create a `home` directory.
 
-- All files from the input directory will be linked into `$HOME`.
-- All directories from the input directory will be created into `$HOME`.
+Whenever you run `homer` inside the `dotfiles` directory, the same structure
+present in the `home` directory will be created into your `$HOME` dir. Every
+dir found will be created if it does not already exist, and every file will
+be linked.
+
+The resulting structure should be as follows:
+
+```bash
+$HOME
+├── dotfiles
+│   ├── dir
+│   │   ├── a
+│   │   └── b
+│   └── file
+├── dir
+│   ├── a -> ~/dotfiles/dir/a
+│   └── b -> ~/dotfiles/dir/b
+└── file -> ~/dotfiles/file
+```
+
+You can also create a `.homerignore` that will be used to ignore certain paths
+whenever `homer` is ran.
 
 ```
 homer 0.1.0
