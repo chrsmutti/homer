@@ -16,7 +16,7 @@ Christian Mutti <chrsmutti@gmail.com>
 "Doh!" A CLI for managing your dotfiles!
 
 USAGE:
-    homer [FLAGS] [input]
+    homer [FLAGS] [OPTIONS] [input]
 
 FLAGS:
     -b, --backup     If a regular file is found at a location that a symlink or directory should be created, the file
@@ -28,8 +28,12 @@ FLAGS:
     -V, --version    Prints version information
     -v, --verbose    Show verbose output about the operations.
 
+OPTIONS:
+        --ignore-file <ignore_file>    File containing ignore patterns, very similar to .gitingore. [default:
+                                       .homerignore]
+
 ARGS:
-    <input>    Directory containing files to link into user's home directory. (defaults to ./home)
+    <input>    Directory containing files to link into user's home directory. [default: ./home]
 ```
 
 Before running it for real, you could inspect what homer will do on a run by
