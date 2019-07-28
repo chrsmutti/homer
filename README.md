@@ -2,6 +2,20 @@
 
 "Doh!" A CLI for managing your dotfiles!
 
+## Build & Install
+
+`homer` still doesn't provide binaries, so if you want to install locally you
+need [`rust`](https://www.rust-lang.org/tools/install).
+
+```bash
+git clone github.com/chrsmutti/homer
+cd homer
+cargo build --release
+
+# Optionally copy it to a dir in your $PATH.
+cp target/release/homer ~/.local/bin
+```
+
 ## Usage
 
 Create a `dotfiles` directory anywhere you'd like, this directory can be a git
