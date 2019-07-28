@@ -33,10 +33,11 @@ struct Opt {
 
     /// Directory containing files to link into user's home directory.
     /// (defaults to ./home)
-    #[structopt(parse(from_os_str))]
-    input: Option<PathBuf>,
+    #[structopt(parse(from_os_str), default_value = "home")]
+    input: PathBuf,
 }
 
+/// Standard result type.
 type Result<T> = std::result::Result<T, failure::Error>;
 
 #[macro_use]
@@ -60,19 +61,12 @@ fn main() {
 
 /// Returns `Err(..)` upon fatal errors. Otherwise, returns `Ok(())`.
 fn run(opt: Opt) -> Result<()> {
-    let input = opt.input.clone().unwrap_or({
-        let mut buf = std::env::current_dir()?;
-        buf.push("home");
-
-        buf
-    });
-
+    let input = fs::canonicalize(&opt.input)?;
     if !input.is_dir() {
         bail!(HomerError::NotFound { path: input });
     }
 
     let home = dirs::home_dir().ok_or(HomerError::NoHome)?;
-    let input = fs::canonicalize(input)?;
     verbose!(opt.verbose, "Running homer using files from: {:?}.", input);
 
     process_dir(&input, &home, &opt)?;
