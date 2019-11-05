@@ -11,15 +11,12 @@ jobs:
     strategy:
       matrix:
         os: [macOS-10.14, ubuntu-18.04]
-        arch: [x86_64, i686]
+        arch: [x86_64]
         include:
           - os: macOS-10.14
             target: apple-darwin
           - os: ubuntu-18.04
             target: unknown-linux-gnu
-        exclude:
-          - os: ubuntu-18.04
-            arch: i686 # not working
     steps:
       - name: Checkout
         uses: actions/checkout@v1
