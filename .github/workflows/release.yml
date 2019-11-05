@@ -17,6 +17,9 @@ jobs:
             target: apple-darwin
           - os: ubuntu-18.04
             target: unknown-linux-gnu
+        exclude:
+          - os: ubuntu-18.04
+            arch: i686 # not working
     steps:
       - name: Checkout
         uses: actions/checkout@v1
@@ -35,7 +38,7 @@ jobs:
         run: cargo build --release --target ${{ matrix.arch }}-${{ matrix.target }}
 
       - name: Archive
-        run: tar cvf homer_${{ steps.get_version.outputs.VERSION }}_${{ matrix.arch }}-${{ matrix.target }}.tar.gz -C target/release/ homer
+        run: tar cvf homer_${{ steps.get_version.outputs.VERSION }}_${{ matrix.arch }}-${{ matrix.target }}.tar.gz -C target/${{ matrix.arch }}-${{ matrix.target }}/release/ homer
 
       - name: Release
         uses: softprops/action-gh-release@v1
