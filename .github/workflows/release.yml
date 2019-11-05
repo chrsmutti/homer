@@ -1,0 +1,37 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [macOS-10.14, ubuntu-18.04]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v1
+
+      - name: Get the version
+        id: get_version
+        run: echo ::set-output name=VERSION::${GITHUB_REF/refs\/tags\//}
+
+      - name: Get the uname
+        id: uname
+        run: echo ::set-output name=UNAME_S::$(uname -s) name=UNAME_P::$(uname -p)
+
+      - name: Build
+        run: cargo build --release
+
+      - name: Archive
+        run: tar cvf homer_${{ steps.get_version.outputs.VERSION }}_${{ steps.get_version.outputs.UNAME_S }}_${{ steps.get_version.outputs.UNAME_P }}.tar.gz -C target/release/ homer
+
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: homer_${{ steps.tag.outputs.result }}_${{ matrix.target }}.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

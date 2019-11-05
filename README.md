@@ -1,8 +1,7 @@
 # homer
 
-<div>
-    <img src="https://img.shields.io/github/license/chrsmutti/homer" />
-</div>
+[![Actions Status](https://github.com/chrsmutti/homer/workflows/Rust/badge.svg)](https://github.com/chrsmutti/homer/actions)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 "Doh!" A CLI for managing your dotfiles!
 
