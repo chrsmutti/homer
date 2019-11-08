@@ -5,12 +5,23 @@
 
 "Doh!" A CLI for managing your dotfiles!
 
-## Build & Install
+## Installation
 
-`homer` still doesn't provide binaries, so if you want to install locally you
-need [`rust`](https://www.rust-lang.org/tools/install).
+#### Standalone
 
-```bash
+`homer` can be easily installed as an executable. Download the latest
+[compiled binaries](https://github.com/chrsmutti/homer/releases) and put it
+anywhere in your executable path.
+
+#### Source
+
+Prerequisites for building from source are:
+
+- [Rust](https://www.rust-lang.org/tools/install)
+
+Clone this repository and run `cargo`:
+
+```sh
 git clone github.com/chrsmutti/homer
 cd homer
 cargo build --release
