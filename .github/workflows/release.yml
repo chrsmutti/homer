@@ -35,7 +35,7 @@ jobs:
         run: cargo build --release --target ${{ matrix.arch }}-${{ matrix.target }}
 
       - name: Archive
-        run: tar cvf homer_${{ steps.get_version.outputs.VERSION }}_${{ matrix.arch }}-${{ matrix.target }}.tar.gz -C target/${{ matrix.arch }}-${{ matrix.target }}/release/ homer
+        run: tar cvzf homer_${{ steps.get_version.outputs.VERSION }}_${{ matrix.arch }}-${{ matrix.target }}.tar.gz -C target/${{ matrix.arch }}-${{ matrix.target }}/release/ homer
 
       - name: Release
         uses: softprops/action-gh-release@v1
