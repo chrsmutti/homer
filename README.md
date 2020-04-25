@@ -45,10 +45,11 @@ The resulting structure should be as follows:
 ```bash
 $HOME
 ├── dotfiles
-│   ├── dir
-│   │   ├── a
-│   │   └── b
-│   └── file
+│   └── home
+│       ├── dir
+│       │   ├── a
+│       │   └── b
+│       └── file
 ├── dir
 │   ├── a -> ~/dotfiles/dir/a
 │   └── b -> ~/dotfiles/dir/b

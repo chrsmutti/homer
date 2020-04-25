@@ -1,35 +1,33 @@
-mod errors;
-
 use std::path::{Path, PathBuf};
 use std::{fs, io};
 
-use dirs;
-use errors::HomerError;
 use failure::bail;
-use glob;
-use structopt;
 use structopt::StructOpt;
 
-#[derive(StructOpt)]
+use errors::HomerError;
+
+mod errors;
+
 /// "Doh!" A CLI for managing your dotfiles!
+#[derive(StructOpt)]
 struct Opt {
-    #[structopt(short, long)]
     /// Show verbose output about the operations.
+    #[structopt(short, long)]
     verbose: bool,
 
-    #[structopt(short, long)]
     /// Force symlink creation even if a regular file exists at the location
     /// (deletes the old file).
+    #[structopt(short, long)]
     force: bool,
 
-    #[structopt(short, long)]
     /// If a regular file is found at a location that a symlink or directory
     /// should be created, the file will be backed up to a file with the same
     /// name, with a .bkp extension. Any old backup file will be overwritten.
+    #[structopt(short, long)]
     backup: bool,
 
-    #[structopt(long = "dry-run")]
     /// Do not actually change anything. Use with --verbose to se all steps.
+    #[structopt(long = "dry-run")]
     dry_run: bool,
 
     /// File containing ignore patterns, very similar to .gitingore.
@@ -91,8 +89,8 @@ struct Walker {
     ignore: Vec<glob::Pattern>,
 }
 
-#[derive(Debug)]
 /// A file or directory abstraction.
+#[derive(Debug)]
 enum Entry {
     /// Directory abstraction with children and destination.
     Dir {
@@ -138,7 +136,7 @@ impl Walker {
                 let entry_path = entry.path();
 
                 // NOTE: As we're working with `DirEntry`s a None is impossible here.
-                entry_dest.push(entry_path.file_name().expect("failed to get file_name."));
+                entry_dest.push(entry_path.file_name().expect("get file_name"));
 
                 if self.check_ignore(entry_path.strip_prefix(&self.path)?) {
                     verbose!(self.opt.verbose, "Ignoring {:?}.", entry_path);
@@ -165,7 +163,7 @@ impl Walker {
         }))
     }
 
-    // TODO: This is a really inneficient way of doing this.
+    // TODO: This is a really inefficient way of doing this.
     /// Check if `path` matches a ignore pattern.
     fn check_ignore(&self, path: &Path) -> bool {
         self.ignore
@@ -215,7 +213,7 @@ fn process_dir(dest: &PathBuf, children: Vec<Entry>, opt: &Opt) -> Result<()> {
             }
         }
         Err(e) => {
-            if !(e.kind() == io::ErrorKind::NotFound) {
+            if e.kind() != io::ErrorKind::NotFound {
                 bail!(e)
             }
         }
@@ -263,7 +261,7 @@ fn process_file(path: &PathBuf, dest: &PathBuf, opt: &Opt) -> Result<()> {
             }
         }
         Err(e) => {
-            if !(e.kind() == io::ErrorKind::NotFound) {
+            if e.kind() != io::ErrorKind::NotFound {
                 bail!(e);
             }
         }
@@ -276,7 +274,7 @@ fn process_file(path: &PathBuf, dest: &PathBuf, opt: &Opt) -> Result<()> {
         path
     );
     if !opt.dry_run {
-        std::os::unix::fs::symlink(path, dest)?; // This makes the binary unix-only ¯\_(ツ)_/¯.
+        std::os::unix::fs::symlink(path, dest)?; // NOTE: This makes the binary unix-only ¯\_(ツ)_/¯.
     }
 
     Ok(())
@@ -319,7 +317,7 @@ fn force_remove(path: &Path, opt: &Opt) -> Result<()> {
 /// Read a `.homerignore` file at `path`.
 ///
 /// Creates patterns from the lines of the file.
-/// Ignores lines starting with "#".
+/// Ignores lines starting with '#'.
 fn read_ignore(path: &PathBuf) -> Result<Vec<glob::Pattern>> {
     if !path.is_file() {
         return Ok(Vec::new());
@@ -328,7 +326,7 @@ fn read_ignore(path: &PathBuf) -> Result<Vec<glob::Pattern>> {
     let mut patterns: Vec<glob::Pattern> = Vec::new();
     let content = fs::read_to_string(path);
     for line in content?.lines() {
-        if line.starts_with("#") {
+        if line.starts_with('#') {
             continue;
         }
 
