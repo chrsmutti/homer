@@ -1,12 +1,9 @@
 use std::path::{Path, PathBuf};
 use std::{fs, io};
 
-use failure::bail;
 use structopt::StructOpt;
 
-use errors::HomerError;
-
-mod errors;
+use anyhow::{anyhow, Context, Result};
 
 /// "Doh!" A CLI for managing your dotfiles!
 #[derive(StructOpt)]
@@ -43,9 +40,6 @@ struct Opt {
     input: PathBuf,
 }
 
-/// Standard result type.
-type Result<T> = std::result::Result<T, failure::Error>;
-
 #[macro_use]
 mod homer {
     /// A simple verbose macro, uses `println!` if first argument evaluates to `true`.
@@ -69,10 +63,10 @@ fn main() {
 fn run(opt: Opt) -> Result<()> {
     let input = fs::canonicalize(&opt.input)?;
     if !input.is_dir() {
-        bail!(HomerError::NotFound(input));
+        return Err(anyhow!("Directory not found {:?}", input));
     }
 
-    let home = dirs::home_dir().ok_or(HomerError::NoHome)?;
+    let home = dirs::home_dir().context("No $HOME.")?;
     verbose!(opt.verbose, "Running homer using files from: {:?}.", input);
 
     let ignore = read_ignore(&opt.ignore_file)?;
@@ -204,7 +198,10 @@ fn process_dir(dest: &PathBuf, children: Vec<Entry>, opt: &Opt) -> Result<()> {
             } else if opt.force {
                 force_remove(dest, opt)?;
             } else {
-                bail!(HomerError::Blocked(dest.into()));
+                return Err(anyhow!(
+                    "Another file already exists at: {:?}. Use --force or --backup.",
+                    dest
+                ));
             }
 
             verbose!(opt.verbose, "Creating directory at {:?}", dest);
@@ -212,10 +209,8 @@ fn process_dir(dest: &PathBuf, children: Vec<Entry>, opt: &Opt) -> Result<()> {
                 fs::create_dir(&dest)?;
             }
         }
-        Err(e) => {
-            if e.kind() != io::ErrorKind::NotFound {
-                bail!(e)
-            }
+        Err(e) if e.kind() != io::ErrorKind::NotFound => {
+            return Err(e.into());
         }
         _ => verbose!(opt.verbose, "Directory at {:?} already exists.", dest),
     }
@@ -248,7 +243,10 @@ fn process_file(path: &PathBuf, dest: &PathBuf, opt: &Opt) -> Result<()> {
             if opt.force {
                 force_remove(dest, opt)?;
             } else {
-                bail!(HomerError::Blocked(dest.into()));
+                return Err(anyhow!(
+                    "Another file already exists at: {:?}. Use --force or --backup.",
+                    dest
+                ));
             }
         }
         Ok(stat) => {
@@ -257,14 +255,16 @@ fn process_file(path: &PathBuf, dest: &PathBuf, opt: &Opt) -> Result<()> {
             } else if opt.force {
                 force_remove(dest, opt)?;
             } else {
-                bail!(HomerError::Blocked(dest.into()));
+                return Err(anyhow!(
+                    "Another file already exists at: {:?}. Use --force or --backup.",
+                    dest
+                ));
             }
         }
-        Err(e) => {
-            if e.kind() != io::ErrorKind::NotFound {
-                bail!(e);
-            }
+        Err(e) if e.kind() != io::ErrorKind::NotFound => {
+            return Err(e.into());
         }
+        _ => (),
     }
 
     verbose!(
