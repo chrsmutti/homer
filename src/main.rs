@@ -119,9 +119,10 @@ fn run_scripts(path: PathBuf, force: bool) -> Result<()> {
 
     // Spawn `process::Command` for the scripts inside the directory.
     for script in &scripts {
-        if Command::new(script).spawn().is_err() {
-            eprintln!("Failed to execute {:?}", script)
-        }
+        Command::new(script)
+            .spawn()
+            .context(format!("Failed to execute {:?}", script))?
+            .wait()?;
     }
 
     Ok(())
