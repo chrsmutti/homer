@@ -56,40 +56,26 @@ $HOME
 └── file -> ~/dotfiles/file
 ```
 
-Before running it for real, you could inspect what homer will do on a run by
-running:
+An action plan will always be shown, and then the user can choose to accept the changes
+or reject them (you can pass the `--force` flag to auto-accept the prompt).
 
 ```
-homer -v --dry-run
-```
-
-You can also create a `.homerignore` that will be used to ignore certain paths
-whenever `homer` is ran.
-
-```
-homer 0.1.0
-Christian Mutti <chrsmutti@gmail.com>
+homer 0.2.0
 "Doh!" A CLI for managing your dotfiles!
 
 USAGE:
-    homer [FLAGS] [OPTIONS] [input]
+    homer [FLAGS] [OPTIONS] --output <output>
 
 FLAGS:
-    -b, --backup     If a regular file is found at a location that a symlink or directory should be created, the file
-                     will be backed up to a file with the same name, with a .bkp extension. Any old backup file will be
-                     overwritten.
-        --dry-run    Do not actually change anything. Use with --verbose to se all steps.
-    -f, --force      Force symlink creation even if a regular file exists at the location (deletes the old file).
-    -h, --help       Prints help information
-    -V, --version    Prints version information
-    -v, --verbose    Show verbose output about the operations.
+    -f, --force        Force the program to run without prompting for confirmation
+    -h, --help         Prints help information
+        --no-backup    Disable backup, an action plan will be created, when other files block symlink creation they will
+                       be deleted instead of moved to a safe backup location
+    -V, --version      Prints version information
 
 OPTIONS:
-        --ignore-file <ignore_file>    File containing ignore patterns, very similar to .gitingore. [default:
-                                       .homerignore]
-
-ARGS:
-    <input>    Directory containing files to link into user's home directory. [default: ./home]
+    -i, --input <input>      Directory containing files to link into user's home directory [default: ./home]
+    -o, --output <output>    Directory the files will be linked to, defaults to $HOME
 ```
 
 ### This could be a bash script!!1!

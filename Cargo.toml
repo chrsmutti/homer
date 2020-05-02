@@ -1,6 +1,6 @@
 [package]
 name = "homer"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Christian Mutti <chrsmutti@gmail.com>"]
 edition = "2018"
 
