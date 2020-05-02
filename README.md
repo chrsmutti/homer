@@ -74,8 +74,10 @@ FLAGS:
     -V, --version      Prints version information
 
 OPTIONS:
-    -i, --input <input>      Directory containing files to link into user's home directory [default: ./home]
-    -o, --output <output>    Directory the files will be linked to, defaults to $HOME
+    -i, --input <input>        Directory containing files to link into user's home directory [default: ./home]
+    -o, --output <output>      Directory the files will be linked to, defaults to $HOME
+        --scripts <scripts>    Directory containing scripts that will be run after the plan is completed. If force flag
+                               is passed, no confirmation prompt will be shown [default: ./scripts]
 ```
 
 ### This could be a bash script!!1!

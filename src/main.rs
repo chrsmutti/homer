@@ -1,6 +1,7 @@
 use std::fmt::Display;
 use std::io::Write;
 use std::path::PathBuf;
+use std::process::Command;
 use std::{fs, io, os::unix, process};
 
 use structopt::StructOpt;
@@ -20,6 +21,11 @@ struct Opt {
     #[structopt(long = "no-backup")]
     no_backup: bool,
 
+    /// Directory containing scripts that will be run after the plan is completed.
+    /// If force flag is passed, no confirmation prompt will be shown.
+    #[structopt(long, parse(from_os_str), default_value = "./scripts")]
+    scripts: PathBuf,
+
     /// Directory containing files to link into user's home directory.
     #[structopt(short, long, parse(from_os_str), default_value = "./home")]
     input: PathBuf,
@@ -33,6 +39,11 @@ fn main() {
     let opt = Opt::from_args();
 
     if let Err(e) = run_linking(opt.input, opt.output, !opt.no_backup, opt.force) {
+        eprintln!("{}", e);
+        process::exit(1);
+    }
+
+    if let Err(e) = run_scripts(opt.scripts, opt.force) {
         eprintln!("{}", e);
         process::exit(1);
     }
@@ -70,6 +81,52 @@ fn run_linking(input: PathBuf, output: PathBuf, backup: bool, force: bool) -> Re
     Ok(())
 }
 
+/// Create and execute and action plan for scripts inside a directory.
+///
+/// All scripts that are inside the directory will be run, but it will not recurse
+/// inside directories folder looking for scripts. The `force` flag disable user
+/// confirmation prompt by auto-accepting the plan.
+fn run_scripts(path: PathBuf, force: bool) -> Result<()> {
+    let path = canonicalize_dir(path)?;
+    let entries = fs::read_dir(&path).context(format!("Could not read {:?}", &path))?;
+
+    // Get all files inside the scripts directory, but do not recurse further
+    // into it's directories.
+    let mut scripts = Vec::new();
+    for entry in entries {
+        let script = entry?.path();
+
+        if script.is_file() {
+            scripts.push(script);
+        }
+    }
+
+    if scripts.is_empty() {
+        return Ok(());
+    }
+
+    println!("The following scripts will execute: \n");
+    for script in &scripts {
+        println!("\t {:?}", script)
+    }
+
+    if !force {
+        // User was prompted, but did not accept the plan.
+        if !prompt_user()? {
+            return Ok(());
+        }
+    }
+
+    // Spawn `process::Command` for the scripts inside the directory.
+    for script in &scripts {
+        if Command::new(script).spawn().is_err() {
+            eprintln!("Failed to execute {:?}", script)
+        }
+    }
+
+    Ok(())
+}
+
 /// Canonicalize a directory path by calling `fs::canonicalize` and failing if
 /// the result path is not a directory.
 fn canonicalize_dir(path: PathBuf) -> Result<PathBuf> {
@@ -85,7 +142,7 @@ fn canonicalize_dir(path: PathBuf) -> Result<PathBuf> {
 /// Prompt user with a confirmation message and wait for the response.
 /// The result will be `true` if the user accepts the prompt.
 fn prompt_user() -> Result<bool> {
-    print!("\nPerform this actions? (y/N) ");
+    print!("\nPerform these actions? (y/N) ");
     io::stdout().flush()?;
 
     let mut input = String::new();
@@ -134,7 +191,7 @@ impl Plan {
         let mut children = Vec::new();
         if path.is_dir() {
             let entries: Vec<_> = fs::read_dir(path)
-                .context(format!("could not read {:?}", path))?
+                .context(format!("Could not read {:?}", path))?
                 .collect();
 
             for entry in entries {
@@ -143,7 +200,7 @@ impl Plan {
                     entry
                         .path()
                         .strip_prefix(path)
-                        .expect("path to be root of file"),
+                        .expect("Path to be root of file"),
                 );
 
                 children.push(Plan::new(&entry.path(), &dest, backup)?);
