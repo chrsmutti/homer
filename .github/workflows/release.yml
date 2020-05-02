@@ -16,18 +16,18 @@ jobs:
         run: echo ::set-output name=VERSION::${GITHUB_REF/refs\/tags\//}
 
       - name: Add target
-        run: rustup target add apple-darwin-x86_64
+        run: rustup target add x86_64-apple-darwin
 
       - name: Build
-        run: cargo build --release --target apple-darwin-x86_64
+        run: cargo build --release --target x86_64-apple-darwin
 
       - name: Rename binary
-        run: mv target/apple-darwin-x86_64/release/homer  homer_${{ steps.get_version.outputs.VERSION }}_apple-darwin-x86_64
+        run: mv target/x86_64-apple-darwin/release/homer  homer_${{ steps.get_version.outputs.VERSION }}_x86_64-apple-darwin
 
       - name: Release
         uses: softprops/action-gh-release@v1
         with:
-          files: homer_${{ steps.get_version.outputs.VERSION }}_apple-darwin-x86_64
+          files: homer_${{ steps.get_version.outputs.VERSION }}_x86_64-apple-darwin
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -41,17 +41,17 @@ jobs:
         run: echo ::set-output name=VERSION::${GITHUB_REF/refs\/tags\//}
 
       - name: Add target
-        run: rustup target add unknown-linux-gnu
+        run: rustup target add x86_64-unknown-linux-gnu
 
       - name: Build
-        run: cargo build --release --target unknown-linux-gnu
+        run: cargo build --release --target x86_64-unknown-linux-gnu
 
       - name: Rename binary
-        run: mv target/unknown-linux-gnu/release/homer  homer_${{ steps.get_version.outputs.VERSION }}_unknown-linux-gnu
+        run: mv target/x86_64-unknown-linux-gnu/release/homer  homer_${{ steps.get_version.outputs.VERSION }}_x86_64-unknown-linux-gnu
 
       - name: Release
         uses: softprops/action-gh-release@v1
         with:
-          files: homer_${{ steps.get_version.outputs.VERSION }}_unknown-linux-gnu
+          files: homer_${{ steps.get_version.outputs.VERSION }}_x86_64-unknown-linux-gnu
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
