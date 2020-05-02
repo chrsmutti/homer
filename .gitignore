@@ -16,6 +16,3 @@ Cargo.lock
 
 # End of https://www.gitignore.io/api/rust
 home
-__test__/output/*
-!__test__/home
-!__test__/output/.gitkeep
