@@ -15,6 +15,9 @@ jobs:
         id: get_version
         run: echo ::set-output name=VERSION::${GITHUB_REF/refs\/tags\//}
 
+      - name: Add target
+        run: rustup target add apple-darwin-x86_64
+
       - name: Build
         run: cargo build --release --target apple-darwin-x86_64
 
@@ -36,6 +39,9 @@ jobs:
       - name: Get version
         id: get_version
         run: echo ::set-output name=VERSION::${GITHUB_REF/refs\/tags\//}
+
+      - name: Add target
+        run: rustup target add unknown-linux-gnu
 
       - name: Build
         run: cargo build --release --target unknown-linux-gnu
