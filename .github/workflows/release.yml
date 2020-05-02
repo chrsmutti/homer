@@ -6,40 +6,46 @@ on:
       - "v*.*.*"
 
 jobs:
-  build:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [macOS-latest, ubuntu-18.04]
-        arch: [x86_64]
-        include:
-          - os: macOS-latest
-            target: apple-darwin
-          - os: ubuntu-18.04
-            target: unknown-linux-gnu
+  macOS:
+    runs-on: macOS-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v1
+      - uses: actions/checkout@v1
 
-      - name: Setup rust
-        uses: hecrj/setup-rust-action@v1
-        with:
-          rust-version: stable
-          targets: ${{ matrix.arch }}-${{ matrix.target }}
-
-      - name: Get the version
+      - name: Get version
         id: get_version
         run: echo ::set-output name=VERSION::${GITHUB_REF/refs\/tags\//}
 
       - name: Build
-        run: cargo build --release --target ${{ matrix.arch }}-${{ matrix.target }}
+        run: cargo build --release --target apple-darwin-x86_64
 
-      - name: Archive
-        run: tar cvzf homer_${{ steps.get_version.outputs.VERSION }}_${{ matrix.arch }}-${{ matrix.target }}.tar.gz -C target/${{ matrix.arch }}-${{ matrix.target }}/release/ homer
+      - name: Rename binary
+        run: mv target/apple-darwin-x86_64/release/homer  homer_${{ steps.get_version.outputs.VERSION }}_apple-darwin-x86_64
 
       - name: Release
         uses: softprops/action-gh-release@v1
         with:
-          files: homer_${{ steps.get_version.outputs.VERSION }}_${{ matrix.arch }}-${{ matrix.target }}.tar.gz
+          files: homer_${{ steps.get_version.outputs.VERSION }}_apple-darwin-x86_64
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  ubuntu:
+    runs-on: ubuntu-18.04
+    steps:
+      - uses: actions/checkout@v1
+
+      - name: Get version
+        id: get_version
+        run: echo ::set-output name=VERSION::${GITHUB_REF/refs\/tags\//}
+
+      - name: Build
+        run: cargo build --release --target unknown-linux-gnu
+
+      - name: Rename binary
+        run: mv target/unknown-linux-gnu/release/homer  homer_${{ steps.get_version.outputs.VERSION }}_unknown-linux-gnu
+
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: homer_${{ steps.get_version.outputs.VERSION }}_unknown-linux-gnu
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

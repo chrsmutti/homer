@@ -1,11 +1,9 @@
 [package]
 name = "homer"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Christian Mutti <chrsmutti@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-dirs = "2.0.1"
-structopt = "0.2.18"
-failure = "0.1.5"
-glob = "0.3.0"
+structopt = "0.3.14"
+anyhow = "1.0.28"

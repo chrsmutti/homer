@@ -1,337 +1,400 @@
-use std::path::{Path, PathBuf};
-use std::{fs, io};
+use std::fmt::Display;
+use std::io::Write;
+use std::path::PathBuf;
+use std::process::Command;
+use std::{fs, io, os::unix, process};
 
-use failure::bail;
 use structopt::StructOpt;
 
-use errors::HomerError;
-
-mod errors;
+use anyhow::{anyhow, Context, Result};
 
 /// "Doh!" A CLI for managing your dotfiles!
 #[derive(StructOpt)]
 struct Opt {
-    /// Show verbose output about the operations.
-    #[structopt(short, long)]
-    verbose: bool,
-
-    /// Force symlink creation even if a regular file exists at the location
-    /// (deletes the old file).
+    /// Force the program to run without prompting for confirmation.
     #[structopt(short, long)]
     force: bool,
 
-    /// If a regular file is found at a location that a symlink or directory
-    /// should be created, the file will be backed up to a file with the same
-    /// name, with a .bkp extension. Any old backup file will be overwritten.
-    #[structopt(short, long)]
-    backup: bool,
+    /// Disable backup, an action plan will be created, when other files block
+    /// symlink creation they will be deleted instead of moved to a safe backup
+    /// location.
+    #[structopt(long = "no-backup")]
+    no_backup: bool,
 
-    /// Do not actually change anything. Use with --verbose to se all steps.
-    #[structopt(long = "dry-run")]
-    dry_run: bool,
-
-    /// File containing ignore patterns, very similar to .gitingore.
-    #[structopt(
-        parse(from_os_str),
-        long = "ignore-file",
-        default_value = ".homerignore"
-    )]
-    ignore_file: PathBuf,
+    /// Directory containing scripts that will be run after the plan is completed.
+    /// If force flag is passed, no confirmation prompt will be shown.
+    #[structopt(long, parse(from_os_str), default_value = "./scripts")]
+    scripts: PathBuf,
 
     /// Directory containing files to link into user's home directory.
-    #[structopt(parse(from_os_str), default_value = "./home")]
+    #[structopt(short, long, parse(from_os_str), default_value = "./home")]
     input: PathBuf,
-}
 
-/// Standard result type.
-type Result<T> = std::result::Result<T, failure::Error>;
-
-#[macro_use]
-mod homer {
-    /// A simple verbose macro, uses `println!` if first argument evaluates to `true`.
-    macro_rules! verbose {
-        ($should:expr, $($arg:tt)*) => {{
-            if $should {
-                println!($($arg)*);
-            }
-        }};
-    }
+    /// Directory the files will be linked to, defaults to $HOME.
+    #[structopt(short, long, parse(from_os_str), env = "HOME")]
+    output: PathBuf,
 }
 
 fn main() {
-    if let Err(e) = run(Opt::from_args()) {
-        eprintln!("[error] {}", e);
-        std::process::exit(1);
+    let opt = Opt::from_args();
+
+    if let Err(e) = run_linking(opt.input, opt.output, !opt.no_backup, opt.force) {
+        eprintln!("{}", e);
+        process::exit(1);
+    }
+
+    if let Err(e) = run_scripts(opt.scripts, opt.force) {
+        eprintln!("{}", e);
+        process::exit(1);
     }
 }
 
-/// Returns `Err(..)` upon fatal errors. Otherwise, returns `Ok(())`.
-fn run(opt: Opt) -> Result<()> {
-    let input = fs::canonicalize(&opt.input)?;
+/// Create and execute action plan for the linking process.
+///
+/// `input` will be used to check for files and directories that will be linked
+/// into `output`. Both `input` and `output` should be valid directories.
+///
+/// By passing the `backup` flag, files that would block symlink creation are moved
+/// to the same directory with a `bkp` extension, otherwise they will be deleted. The
+/// `force` flag disable user confirmation prompt by auto-accepting the plan.
+fn run_linking(input: PathBuf, output: PathBuf, backup: bool, force: bool) -> Result<()> {
+    let input = canonicalize_dir(input)?;
+    let output = canonicalize_dir(output)?;
+
+    let plan = Plan::new(&input, &output, backup)?;
+    if plan.is_empty() {
+        return Ok(());
+    }
+
+    // Show the plan to the user, this substitute a verbose option, as it's always shown.
+    println!("The following actions will be performed: \n");
+    plan.show();
+
+    if !force {
+        // User was prompted, but did not accept the plan.
+        if !prompt_user()? {
+            return Ok(());
+        }
+    }
+
+    plan.execute()?;
+    Ok(())
+}
+
+/// Create and execute and action plan for scripts inside a directory.
+///
+/// All scripts that are inside the directory will be run, but it will not recurse
+/// inside directories folder looking for scripts. The `force` flag disable user
+/// confirmation prompt by auto-accepting the plan.
+fn run_scripts(path: PathBuf, force: bool) -> Result<()> {
+    let path = canonicalize_dir(path)?;
+    let entries = fs::read_dir(&path).context(format!("Could not read {:?}", &path))?;
+
+    // Get all files inside the scripts directory, but do not recurse further
+    // into it's directories.
+    let mut scripts = Vec::new();
+    for entry in entries {
+        let script = entry?.path();
+
+        if script.is_file() {
+            scripts.push(script);
+        }
+    }
+
+    if scripts.is_empty() {
+        return Ok(());
+    }
+
+    println!("The following scripts will execute: \n");
+    for script in &scripts {
+        println!("\t {:?}", script)
+    }
+
+    if !force {
+        // User was prompted, but did not accept the plan.
+        if !prompt_user()? {
+            return Ok(());
+        }
+    }
+
+    // Spawn `process::Command` for the scripts inside the directory.
+    for script in &scripts {
+        if Command::new(script).spawn().is_err() {
+            eprintln!("Failed to execute {:?}", script)
+        }
+    }
+
+    Ok(())
+}
+
+/// Canonicalize a directory path by calling `fs::canonicalize` and failing if
+/// the result path is not a directory.
+fn canonicalize_dir(path: PathBuf) -> Result<PathBuf> {
+    let input = fs::canonicalize(&path).context(format!("{:?} not found", &path))?;
+
     if !input.is_dir() {
-        bail!(HomerError::NotFound(input));
+        return Err(anyhow!(format!("{:?} is not a directory", path)));
     }
 
-    let home = dirs::home_dir().ok_or(HomerError::NoHome)?;
-    verbose!(opt.verbose, "Running homer using files from: {:?}.", input);
-
-    let ignore = read_ignore(&opt.ignore_file)?;
-    let walker = Walker::new(input, home, opt, ignore);
-    walker.walk()
+    Ok(input)
 }
 
-/// A Walker traverses the directory structure creating a plan for the run.
-/// Ignore paths that match the ignore patterns.
-struct Walker {
-    path: PathBuf,
-    dest: PathBuf,
-    opt: Opt,
-    ignore: Vec<glob::Pattern>,
+/// Prompt user with a confirmation message and wait for the response.
+/// The result will be `true` if the user accepts the prompt.
+fn prompt_user() -> Result<bool> {
+    print!("\nPerform these actions? (y/N) ");
+    io::stdout().flush()?;
+
+    let mut input = String::new();
+    io::stdin().read_line(&mut input)?;
+
+    return Ok(input.trim().to_lowercase() == "y");
 }
 
-/// A file or directory abstraction.
-#[derive(Debug)]
-enum Entry {
-    /// Directory abstraction with children and destination.
-    Dir {
+/// Action plan for linking files into a destination directory.
+/// There are two variants, `Plan::Noop` and `Plan::Link`.
+#[derive(Debug, PartialEq)]
+enum Plan {
+    /// `Plan::Noop` denotes a action that does not need to be executed,
+    /// it usually refers to directories that already exists on the destination
+    /// path.
+    Noop {
         path: PathBuf,
         dest: PathBuf,
-        children: Vec<Entry>,
+        children: Vec<Plan>,
     },
 
-    /// A File abstraction, containing the symlink destination.
-    File { path: PathBuf, dest: PathBuf },
+    /// `Plan::Link` denotes a symlinking action, it can refer to a file or a
+    /// directory. The `replace` flag on it is set to `true` if there is already
+    /// an existing file or directory on the destination path, depending on the
+    /// value of the `backup` flag, this existing file should be moved to a safe
+    /// location or deleted from disk.
+    Link {
+        path: PathBuf,
+        dest: PathBuf,
+        replace: bool,
+        backup: bool,
+    },
 }
 
-impl Walker {
-    /// Create a new Walker.
-    fn new(path: PathBuf, dest: PathBuf, opt: Opt, ignore: Vec<glob::Pattern>) -> Walker {
-        Walker {
-            path,
-            dest,
-            opt,
-            ignore,
+impl Plan {
+    /// Create an action plan based on a input `path` and a destination. This will
+    /// recurse inside the provided directories for other directories and files to
+    /// be added to the action plan.
+    fn new(path: &PathBuf, dest: &PathBuf, backup: bool) -> Result<Plan> {
+        if !path.exists() {
+            return Err(anyhow!("{:?} does not exist", path));
         }
-    }
 
-    /// Walk through this Walker's `path`, creating the plan that will create
-    /// directories and link files at this Walker's `dest`.
-    fn walk(self) -> Result<()> {
-        let home_dir = self.walk_dir(&self.path, &self.dest)?;
+        // When the current path denotes a directory, we should recurse into
+        // it's entries and add them to the action plan accordingly.
+        let mut children = Vec::new();
+        if path.is_dir() {
+            let entries: Vec<_> = fs::read_dir(path)
+                .context(format!("Could not read {:?}", path))?
+                .collect();
 
-        // NOTE: `Option` here should never be `None`.
-        home_dir.unwrap().process(&self.opt)
-    }
+            for entry in entries {
+                let entry = entry?;
+                let dest = dest.join(
+                    entry
+                        .path()
+                        .strip_prefix(path)
+                        .expect("Path to be root of file"),
+                );
 
-    /// Walk through a directory, transforming all entries inside the directory
-    /// into abstractions that will be used later when running the execution
-    /// plan.
-    fn walk_dir(&self, path: &PathBuf, dest: &PathBuf) -> Result<Option<Entry>> {
-        let mut children: Vec<Entry> = Vec::new();
-        let entries = fs::read_dir(&path)?;
-
-        for entry in entries {
-            if let Ok(entry) = entry {
-                let mut entry_dest = dest.clone();
-                let entry_path = entry.path();
-
-                // NOTE: As we're working with `DirEntry`s a None is impossible here.
-                entry_dest.push(entry_path.file_name().expect("get file_name"));
-
-                if self.check_ignore(entry_path.strip_prefix(&self.path)?) {
-                    verbose!(self.opt.verbose, "Ignoring {:?}.", entry_path);
-                    break;
-                }
-
-                verbose!(self.opt.verbose, "Processing {:?}", entry_path);
-                if entry_path.is_dir() {
-                    // NOTE: `Option` here should never be `None`.
-                    children.push(self.walk_dir(&entry_path, &entry_dest)?.unwrap());
-                } else {
-                    children.push(Entry::File {
-                        path: entry_path,
-                        dest: entry_dest,
-                    });
-                }
+                children.push(Plan::new(&entry.path(), &dest, backup)?);
             }
         }
 
-        Ok(Some(Entry::Dir {
+        // Check `path` and `dest` equality when both are directories.
+        let dir_equality = dest.exists() && path.is_dir() && dest.is_dir();
+
+        // When dealing with files, they will be equal if their `path`s canonicalized
+        // are equal, meaning that `dest` is a link to `path`.
+        let file_equality = dest.exists() & path.is_file()
+            && path.canonicalize().expect("path is always valid")
+                == dest.canonicalize().expect("dest is always valid");
+
+        // If their equal, no action is needed.
+        if dir_equality || file_equality {
+            return Ok(Plan::Noop {
+                path: path.into(),
+                dest: dest.into(),
+                children,
+            });
+        }
+
+        Ok(Plan::Link {
+            backup,
             path: path.into(),
             dest: dest.into(),
-            children,
-        }))
+            replace: dest.exists(),
+        })
     }
 
-    // TODO: This is a really inefficient way of doing this.
-    /// Check if `path` matches a ignore pattern.
-    fn check_ignore(&self, path: &Path) -> bool {
-        self.ignore
-            .iter()
-            .any(|pattern| pattern.matches(path.to_str().expect("path is not utf-8")))
-    }
-}
-
-impl Entry {
-    /// Process the execution plan for the current entry.
-    fn process(self, opt: &Opt) -> Result<()> {
+    /// Check if an action plan is empty, this is done by checking if the plan is `Plan::Noop`,
+    /// and all it's children are also `empty`.
+    fn is_empty(self: &Self) -> bool {
         match self {
-            Entry::Dir { dest, children, .. } => process_dir(&dest, children, opt),
-            Entry::File { path, dest } => process_file(&path, &dest, opt),
+            Plan::Noop { children, .. } => children.iter().all(Plan::is_empty),
+            _ => false,
+        }
+    }
+
+    /// Show the plan, recursing and displaying all it's children aswell.
+    fn show(self: &Self) {
+        match self {
+            Plan::Noop { children, .. } => children.iter().for_each(Plan::show),
+            _ => println!("{}", self),
+        }
+    }
+
+    /// Execute the current plan.
+    /// This will modify the disk. This function is unix-only.
+    ///
+    /// When dealing with `Plan::Link`, we need to be careful about replacing blocking
+    /// files in the destination directory, they can be backed-up to a safe location or
+    /// deleted from dist. This will recurse and call `Plan::execute` on plan's children.
+    fn execute(self: &Self) -> Result<()> {
+        match self {
+            Plan::Link {
+                path,
+                dest,
+                replace,
+                backup,
+            } => {
+                if *replace && *backup {
+                    fs::rename(dest, dest.with_extension("bkp"))?;
+                } else if *replace {
+                    fs::remove_file(dest)?;
+                }
+
+                // NOTE: This makes the binary unix-only ¯\_(ツ)_/¯.
+                unix::fs::symlink(path, dest)?;
+                Ok(())
+            }
+            Plan::Noop { children, .. } => children.iter().try_for_each(Plan::execute),
         }
     }
 }
 
-/// Process the execution plan for a `Dir` Entry.
-///
-/// The `children` entries will be processed.
-/// Creates the directory at `dest` if it does not exist. If it does exist and
-/// is not a directory, will return a error unless `force` or `backup` options
-/// are present.
-///
-/// # Errors
-///
-/// This function will return an error in the following situations, but is not
-/// limited to just these cases:
-///
-/// * A symlink or a regular file already exists at `dest` and no `force` option was passed.
-/// * A regular file already exists at `dest` and no `backup` option was passed.
-fn process_dir(dest: &PathBuf, children: Vec<Entry>, opt: &Opt) -> Result<()> {
-    match fs::metadata(dest) {
-        Ok(ref stat) if !stat.is_dir() => {
-            if opt.backup && !stat.file_type().is_symlink() {
-                backup(dest, opt)?;
-            } else if opt.force {
-                force_remove(dest, opt)?;
-            } else {
-                bail!(HomerError::Blocked(dest.into()));
-            }
+impl Display for Plan {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Plan::Link {
+                path,
+                dest,
+                replace,
+                backup,
+            } => {
+                if *replace && *backup {
+                    writeln!(f, "\t Move: {:?} -> {:?}", dest, dest.with_extension("bkp"))?
+                } else if *replace {
+                    writeln!(f, "\t Delete: {:?}", dest)?
+                }
 
-            verbose!(opt.verbose, "Creating directory at {:?}", dest);
-            if !opt.dry_run {
-                fs::create_dir(&dest)?;
+                write!(f, "\t Symlink: {:?} -> {:?}", dest, path)
             }
-        }
-        Err(e) => {
-            if e.kind() != io::ErrorKind::NotFound {
-                bail!(e)
-            }
-        }
-        _ => verbose!(opt.verbose, "Directory at {:?} already exists.", dest),
-    }
-
-    for child in children {
-        if let Err(e) = child.process(opt) {
-            eprintln!("[error] {}", e);
+            _ => Ok(()),
         }
     }
-
-    Ok(())
 }
 
-/// Process the execution plan for a `File` Entry.
-///
-/// The file will be linked into `dest`.
-/// It checks if a regular file exists at the location, or if a symlink already
-/// exists.
-///
-/// # Errors
-///
-/// This function will return an error in the following situations, but is not
-/// limited to just these cases:
-///
-/// * A symlink or a regular file already exists at `dest` and no `force` option was passed.
-/// * A regular file already exists at `path` and no `backup` option was passed.
-fn process_file(path: &PathBuf, dest: &PathBuf, opt: &Opt) -> Result<()> {
-    match fs::symlink_metadata(dest) {
-        Ok(ref stat) if stat.file_type().is_symlink() => {
-            if opt.force {
-                force_remove(dest, opt)?;
-            } else {
-                bail!(HomerError::Blocked(dest.into()));
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn missing_input() {
+        let plan = Plan::new(
+            &"./__test__/life".into(),
+            &"./__test__/output".into(),
+            false,
+        );
+        assert!(plan.is_err(), "input path should not exist");
+    }
+    #[test]
+    fn missing_output() {
+        let path: PathBuf = "./__test__/simple".into();
+        let dest: PathBuf = "./__test__/life".into();
+        let plan = Plan::new(&path, &dest, false);
+
+        match plan {
+            Ok(Plan::Link {
+                path: p,
+                dest: d,
+                backup,
+                replace,
+            }) => {
+                assert_eq!(p, path);
+                assert_eq!(d, dest);
+                assert_eq!(backup, false);
+                assert_eq!(replace, false);
             }
-        }
-        Ok(stat) => {
-            if opt.backup && !stat.file_type().is_symlink() {
-                backup(dest, opt)?;
-            } else if opt.force {
-                force_remove(dest, opt)?;
-            } else {
-                bail!(HomerError::Blocked(dest.into()));
-            }
-        }
-        Err(e) => {
-            if e.kind() != io::ErrorKind::NotFound {
-                bail!(e);
-            }
+            _ => panic!("plan should be to link folder"),
         }
     }
 
-    verbose!(
-        opt.verbose,
-        "Creating link at: {:?}, points to: {:?}",
-        dest,
-        path
-    );
-    if !opt.dry_run {
-        std::os::unix::fs::symlink(path, dest)?; // NOTE: This makes the binary unix-only ¯\_(ツ)_/¯.
+    #[test]
+    fn simple() {
+        let path: PathBuf = "./__test__/simple".into();
+        let dest: PathBuf = "./__test__/output".into();
+
+        let expected = Plan::Noop {
+            path: path.clone(),
+            dest: dest.clone(),
+            children: vec![Plan::Link {
+                path: path.join("file"),
+                dest: dest.join("file"),
+                backup: false,
+                replace: false,
+            }],
+        };
+
+        let plan = Plan::new(&path, &dest, false);
+        assert!(plan.is_ok(), "everything should be fine");
+        assert_eq!(plan.unwrap(), expected);
     }
 
-    Ok(())
-}
+    #[test]
+    fn idempotent() {
+        let path: PathBuf = "./__test__/idempotent".into();
+        let dest: PathBuf = "./__test__/output".into();
 
-/// Backup the file at `path`.
-///
-/// Does nothing if `opt.dry_run` is active.
-/// This renames the file at `path` to a file at the same location, with the
-/// same name and a added prefix `.bkp`. If a `.bkp` file already exists this
-/// will override it.
-fn backup(path: &PathBuf, opt: &Opt) -> Result<()> {
-    let bpath = path.with_extension("bkp");
-    println!(
-        "Backing up {:?} to {:?} due to --backup (-b) flag.",
-        path, bpath
-    );
-    if !opt.dry_run {
-        fs::rename(path, bpath)?;
+        let expected = Plan::Noop {
+            path: path.clone(),
+            dest: dest.clone(),
+            children: vec![Plan::Noop {
+                path: path.join("linked"),
+                dest: dest.join("linked"),
+                children: vec![],
+            }],
+        };
+
+        let plan = Plan::new(&path, &dest, false);
+        assert!(plan.is_ok(), "everything should be fine");
+        assert_eq!(plan.unwrap(), expected);
     }
 
-    Ok(())
-}
+    #[test]
+    fn replace() {
+        let path: PathBuf = "./__test__/replace".into();
+        let dest: PathBuf = "./__test__/output".into();
 
-/// Remove the file at `path`.
-///
-/// Does nothing if `opt.dry_run` is active.
-fn force_remove(path: &Path, opt: &Opt) -> Result<()> {
-    println!(
-        "Removing regular file at {:?}, due to --force (-f) flag.",
-        path
-    );
-    if !opt.dry_run {
-        fs::remove_file(path)?
+        let expected = Plan::Noop {
+            path: path.clone(),
+            dest: dest.clone(),
+            children: vec![Plan::Link {
+                path: path.join("replaceable"),
+                dest: dest.join("replaceable"),
+                backup: false,
+                replace: true,
+            }],
+        };
+
+        let plan = Plan::new(&path, &dest, false);
+        assert!(plan.is_ok(), "everything should be fine");
+        assert_eq!(plan.unwrap(), expected);
     }
-
-    Ok(())
-}
-
-/// Read a `.homerignore` file at `path`.
-///
-/// Creates patterns from the lines of the file.
-/// Ignores lines starting with '#'.
-fn read_ignore(path: &PathBuf) -> Result<Vec<glob::Pattern>> {
-    if !path.is_file() {
-        return Ok(Vec::new());
-    }
-
-    let mut patterns: Vec<glob::Pattern> = Vec::new();
-    let content = fs::read_to_string(path);
-    for line in content?.lines() {
-        if line.starts_with('#') {
-            continue;
-        }
-
-        patterns.push(glob::Pattern::new(line)?);
-    }
-
-    Ok(patterns)
 }
