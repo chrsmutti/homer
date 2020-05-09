@@ -51,9 +51,9 @@ $HOME
 │       │   └── b
 │       └── file
 ├── dir
-│   ├── a -> ~/dotfiles/dir/a
-│   └── b -> ~/dotfiles/dir/b
-└── file -> ~/dotfiles/file
+│   ├── a -> ~/dotfiles/home/dir/a
+│   └── b -> ~/dotfiles/home/dir/b
+└── file -> ~/dotfiles/home/file
 ```
 
 An action plan will always be shown, and then the user can choose to accept the changes
