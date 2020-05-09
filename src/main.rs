@@ -1,12 +1,12 @@
-use std::fmt::Display;
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::Command;
-use std::{fs, io, os::unix, process};
-
-use structopt::StructOpt;
+use std::{fs, io, os::unix};
 
 use anyhow::{anyhow, Context, Result};
+use crossterm::execute;
+use crossterm::style::{Attribute, Color, Print, SetAttribute, SetForegroundColor};
+use structopt::StructOpt;
 
 /// "Doh!" A CLI for managing your dotfiles!
 #[derive(StructOpt)]
@@ -23,8 +23,8 @@ struct Opt {
 
     /// Directory containing scripts that will be run after the plan is completed.
     /// If force flag is passed, no confirmation prompt will be shown.
-    #[structopt(long, parse(from_os_str), default_value = "./scripts")]
-    scripts: PathBuf,
+    #[structopt(long, parse(from_os_str))]
+    scripts: Option<PathBuf>,
 
     /// Directory containing files to link into user's home directory.
     #[structopt(short, long, parse(from_os_str), default_value = "./home")]
@@ -35,18 +35,16 @@ struct Opt {
     output: PathBuf,
 }
 
-fn main() {
+fn main() -> Result<()> {
     let opt = Opt::from_args();
 
-    if let Err(e) = run_linking(opt.input, opt.output, !opt.no_backup, opt.force) {
-        eprintln!("{}", e);
-        process::exit(1);
+    run_linking(opt.input, opt.output, !opt.no_backup, opt.force)?;
+
+    if let Some(scripts) = opt.scripts {
+        run_scripts(scripts, opt.force)?;
     }
 
-    if let Err(e) = run_scripts(opt.scripts, opt.force) {
-        eprintln!("{}", e);
-        process::exit(1);
-    }
+    Ok(())
 }
 
 /// Create and execute action plan for the linking process.
@@ -67,8 +65,7 @@ fn run_linking(input: PathBuf, output: PathBuf, backup: bool, force: bool) -> Re
     }
 
     // Show the plan to the user, this substitute a verbose option, as it's always shown.
-    println!("The following actions will be performed: \n");
-    plan.show();
+    plan.show()?;
 
     if !force {
         // User was prompted, but did not accept the plan.
@@ -105,9 +102,21 @@ fn run_scripts(path: PathBuf, force: bool) -> Result<()> {
         return Ok(());
     }
 
-    println!("The following scripts will execute: \n");
+    // Skip one line after the linking output.
+    println!();
     for script in &scripts {
-        println!("\t {:?}", script)
+        // Show scripts that will execute, formatted.
+        execute!(
+            io::stdout(),
+            SetForegroundColor(Color::Green),
+            SetAttribute(Attribute::Bold),
+            Print("- run: "),
+            SetAttribute(Attribute::Reset),
+            SetForegroundColor(Color::Green),
+            Print(format!("{}", script.display())),
+            Print("\n"),
+            SetForegroundColor(Color::Reset),
+        )?;
     }
 
     if !force {
@@ -143,8 +152,14 @@ fn canonicalize_dir(path: PathBuf) -> Result<PathBuf> {
 /// Prompt user with a confirmation message and wait for the response.
 /// The result will be `true` if the user accepts the prompt.
 fn prompt_user() -> Result<bool> {
-    print!("\nPerform these actions? (y/N) ");
-    io::stdout().flush()?;
+    execute!(
+        io::stdout(),
+        Print("\n"),
+        Print("Perform these actions? "),
+        SetAttribute(Attribute::Dim),
+        Print("(y/N) "),
+        SetAttribute(Attribute::Reset),
+    )?;
 
     let mut input = String::new();
     io::stdin().read_line(&mut input)?;
@@ -197,12 +212,7 @@ impl Plan {
 
             for entry in entries {
                 let entry = entry?;
-                let dest = dest.join(
-                    entry
-                        .path()
-                        .strip_prefix(path)
-                        .expect("Path to be root of file"),
-                );
+                let dest = dest.join(entry.path().strip_prefix(path)?);
 
                 children.push(Plan::new(&entry.path(), &dest, backup)?);
             }
@@ -213,11 +223,10 @@ impl Plan {
 
         // When dealing with files, they will be equal if their `path`s canonicalized
         // are equal, meaning that `dest` is a link to `path`.
-        let file_equality = dest.exists() & path.is_file()
-            && path.canonicalize().expect("path is always valid")
-                == dest.canonicalize().expect("dest is always valid");
+        let file_equality =
+            dest.exists() & path.is_file() && path.canonicalize()? == dest.canonicalize()?;
 
-        // If their equal, no action is needed.
+        // If they're equal, no action is needed.
         if dir_equality || file_equality {
             return Ok(Plan::Noop {
                 path: path.into(),
@@ -236,18 +245,10 @@ impl Plan {
 
     /// Check if an action plan is empty, this is done by checking if the plan is `Plan::Noop`,
     /// and all it's children are also `empty`.
-    fn is_empty(self: &Self) -> bool {
+    fn is_empty(&self) -> bool {
         match self {
             Plan::Noop { children, .. } => children.iter().all(Plan::is_empty),
             _ => false,
-        }
-    }
-
-    /// Show the plan, recursing and displaying all it's children aswell.
-    fn show(self: &Self) {
-        match self {
-            Plan::Noop { children, .. } => children.iter().for_each(Plan::show),
-            _ => println!("{}", self),
         }
     }
 
@@ -257,7 +258,7 @@ impl Plan {
     /// When dealing with `Plan::Link`, we need to be careful about replacing blocking
     /// files in the destination directory, they can be backed-up to a safe location or
     /// deleted from dist. This will recurse and call `Plan::execute` on plan's children.
-    fn execute(self: &Self) -> Result<()> {
+    fn execute(&self) -> Result<()> {
         match self {
             Plan::Link {
                 path,
@@ -278,10 +279,9 @@ impl Plan {
             Plan::Noop { children, .. } => children.iter().try_for_each(Plan::execute),
         }
     }
-}
 
-impl Display for Plan {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    /// Show the plan, recursing and displaying all it's children aswell.
+    fn show(self: &Self) -> Result<()> {
         match self {
             Plan::Link {
                 path,
@@ -290,14 +290,53 @@ impl Display for Plan {
                 backup,
             } => {
                 if *replace && *backup {
-                    writeln!(f, "\t Move: {:?} -> {:?}", dest, dest.with_extension("bkp"))?
+                    // Show backup formatted text
+                    execute!(
+                        io::stdout(),
+                        SetForegroundColor(Color::Magenta),
+                        SetAttribute(Attribute::Bold),
+                        Print("~ mv: "),
+                        SetAttribute(Attribute::Reset),
+                        SetForegroundColor(Color::Magenta),
+                        Print(format!(
+                            "{} -> {}",
+                            dest.display(),
+                            dest.with_extension("bkp").display()
+                        )),
+                        Print("\n"),
+                        SetForegroundColor(Color::Reset),
+                    )?;
                 } else if *replace {
-                    writeln!(f, "\t Delete: {:?}", dest)?
+                    // Show remove formatted text
+                    execute!(
+                        io::stdout(),
+                        SetForegroundColor(Color::Red),
+                        SetAttribute(Attribute::Bold),
+                        Print("- rm: "),
+                        SetAttribute(Attribute::Reset),
+                        SetForegroundColor(Color::Red),
+                        Print(format!("{}", dest.display())),
+                        Print("\n"),
+                        SetForegroundColor(Color::Reset),
+                    )?;
                 }
 
-                write!(f, "\t Symlink: {:?} -> {:?}", dest, path)
+                // Show link formatted text
+                execute!(
+                    io::stdout(),
+                    SetForegroundColor(Color::Cyan),
+                    SetAttribute(Attribute::Bold),
+                    Print("~ ln: "),
+                    SetAttribute(Attribute::Reset),
+                    SetForegroundColor(Color::Cyan),
+                    Print(format!("{} -> {}", dest.display(), path.display())),
+                    Print("\n"),
+                    SetForegroundColor(Color::Reset),
+                )?;
+
+                Ok(())
             }
-            _ => Ok(()),
+            Plan::Noop { children, .. } => children.iter().try_for_each(Plan::show),
         }
     }
 }
@@ -389,6 +428,27 @@ mod tests {
             children: vec![Plan::Link {
                 path: path.join("replaceable"),
                 dest: dest.join("replaceable"),
+                backup: false,
+                replace: true,
+            }],
+        };
+
+        let plan = Plan::new(&path, &dest, false);
+        assert!(plan.is_ok(), "everything should be fine");
+        assert_eq!(plan.unwrap(), expected);
+    }
+
+    #[test]
+    fn not_folder() {
+        let path: PathBuf = "./__test__/not_folder".into();
+        let dest: PathBuf = "./__test__/output".into();
+
+        let expected = Plan::Noop {
+            path: path.clone(),
+            dest: dest.clone(),
+            children: vec![Plan::Link {
+                path: path.join("not_folder"),
+                dest: dest.join("not_folder"),
                 backup: false,
                 replace: true,
             }],

@@ -60,7 +60,7 @@ An action plan will always be shown, and then the user can choose to accept the 
 or reject them (you can pass the `--force` flag to auto-accept the prompt).
 
 ```
-homer 0.2.0
+homer 0.2.1
 "Doh!" A CLI for managing your dotfiles!
 
 USAGE:
@@ -75,9 +75,9 @@ FLAGS:
 
 OPTIONS:
     -i, --input <input>        Directory containing files to link into user's home directory [default: ./home]
-    -o, --output <output>      Directory the files will be linked to, defaults to $HOME
+    -o, --output <output>      Directory the files will be linked to, defaults to $HOME [env: HOME]
         --scripts <scripts>    Directory containing scripts that will be run after the plan is completed. If force flag
-                               is passed, no confirmation prompt will be shown [default: ./scripts]
+                               is passed, no confirmation prompt will be shown
 ```
 
 ### This could be a bash script!!1!
