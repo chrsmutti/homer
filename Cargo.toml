@@ -3,6 +3,7 @@ name = "homer"
 version = "0.2.1"
 authors = ["Christian Mutti <chrsmutti@gmail.com>"]
 edition = "2018"
+publish = false
 
 [dependencies]
 structopt = "0.3.19"
