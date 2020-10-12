@@ -5,6 +5,6 @@ authors = ["Christian Mutti <chrsmutti@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-structopt = "0.3.14"
-anyhow = "1.0.28"
-crossterm = "0.17.4"
+structopt = "0.3.19"
+anyhow = "1.0.33"
+crossterm = "0.18.0"

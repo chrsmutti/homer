@@ -269,7 +269,11 @@ impl Plan {
                 if *replace && *backup {
                     fs::rename(dest, dest.with_extension("bkp"))?;
                 } else if *replace {
-                    fs::remove_file(dest)?;
+                    if dest.is_dir() {
+                        fs::remove_dir_all(dest)?;
+                    } else {
+                        fs::remove_file(dest)?;
+                    }
                 }
 
                 // NOTE: This makes the binary unix-only ¯\_(ツ)_/¯.
@@ -316,9 +320,20 @@ impl Plan {
                         SetAttribute(Attribute::Reset),
                         SetForegroundColor(Color::Red),
                         Print(format!("{}", dest.display())),
-                        Print("\n"),
-                        SetForegroundColor(Color::Reset),
                     )?;
+
+                    if dest.is_dir() {
+                        execute!(
+                            io::stdout(),
+                            SetForegroundColor(Color::Red),
+                            SetAttribute(Attribute::Bold),
+                            Print(format!(
+                                " (this is a directory, all of it's contents will be deleted)"
+                            ))
+                        )?;
+                    }
+
+                    execute!(io::stdout(), Print("\n"), SetForegroundColor(Color::Reset))?;
                 }
 
                 // Show link formatted text
@@ -348,16 +363,16 @@ mod tests {
     #[test]
     fn missing_input() {
         let plan = Plan::new(
-            &"./__test__/life".into(),
-            &"./__test__/output".into(),
+            &"./testdata/life".into(),
+            &"./testdata/output".into(),
             false,
         );
         assert!(plan.is_err(), "input path should not exist");
     }
     #[test]
     fn missing_output() {
-        let path: PathBuf = "./__test__/simple".into();
-        let dest: PathBuf = "./__test__/life".into();
+        let path: PathBuf = "./testdata/simple".into();
+        let dest: PathBuf = "./testdata/life".into();
         let plan = Plan::new(&path, &dest, false);
 
         match plan {
@@ -378,8 +393,8 @@ mod tests {
 
     #[test]
     fn simple() {
-        let path: PathBuf = "./__test__/simple".into();
-        let dest: PathBuf = "./__test__/output".into();
+        let path: PathBuf = "./testdata/simple".into();
+        let dest: PathBuf = "./testdata/output".into();
 
         let expected = Plan::Noop {
             path: path.clone(),
@@ -399,8 +414,8 @@ mod tests {
 
     #[test]
     fn idempotent() {
-        let path: PathBuf = "./__test__/idempotent".into();
-        let dest: PathBuf = "./__test__/output".into();
+        let path: PathBuf = "./testdata/idempotent".into();
+        let dest: PathBuf = "./testdata/output".into();
 
         let expected = Plan::Noop {
             path: path.clone(),
@@ -419,8 +434,8 @@ mod tests {
 
     #[test]
     fn replace() {
-        let path: PathBuf = "./__test__/replace".into();
-        let dest: PathBuf = "./__test__/output".into();
+        let path: PathBuf = "./testdata/replace".into();
+        let dest: PathBuf = "./testdata/output".into();
 
         let expected = Plan::Noop {
             path: path.clone(),
@@ -440,8 +455,8 @@ mod tests {
 
     #[test]
     fn not_folder() {
-        let path: PathBuf = "./__test__/not_folder".into();
-        let dest: PathBuf = "./__test__/output".into();
+        let path: PathBuf = "./testdata/not_folder".into();
+        let dest: PathBuf = "./testdata/output".into();
 
         let expected = Plan::Noop {
             path: path.clone(),
