@@ -164,7 +164,7 @@ fn prompt_user() -> Result<bool> {
     let mut input = String::new();
     io::stdin().read_line(&mut input)?;
 
-    return Ok(input.trim().to_lowercase() == "y");
+    Ok(input.trim().to_lowercase() == "y")
 }
 
 /// Action plan for linking files into a destination directory.
@@ -285,7 +285,7 @@ impl Plan {
     }
 
     /// Show the plan, recursing and displaying all it's children aswell.
-    fn show(self: &Self) -> Result<()> {
+    fn show(&self) -> Result<()> {
         match self {
             Plan::Link {
                 path,
@@ -327,9 +327,10 @@ impl Plan {
                             io::stdout(),
                             SetForegroundColor(Color::Red),
                             SetAttribute(Attribute::Bold),
-                            Print(format!(
+                            Print(
                                 " (this is a directory, all of it's contents will be deleted)"
-                            ))
+                                    .to_string()
+                            )
                         )?;
                     }
 
