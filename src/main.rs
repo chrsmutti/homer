@@ -1,4 +1,3 @@
-use std::io::Write;
 use std::path::PathBuf;
 use std::process::Command;
 use std::{fs, io, os::unix};
@@ -199,7 +198,7 @@ impl Plan {
     /// be added to the action plan.
     fn new(path: &PathBuf, dest: &PathBuf, backup: bool) -> Result<Plan> {
         if !path.exists() {
-            return Err(anyhow!("{:?} does not exist", path));
+            anyhow::bail!("{:?} does not exist", path);
         }
 
         // When the current path denotes a directory, we should recurse into
