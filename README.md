@@ -7,9 +7,17 @@
 
 ## Installation
 
+### `cargo`
+
+`homer` can be installed using `cargo`:
+
+```bash
+cargo install --git https://github.com/chrsmutti/homer.git
+```
+
 #### Standalone
 
-`homer` can be easily installed as an executable. Download the latest
+`homer` can also be installed as an executable. Download the latest
 [compiled binaries](https://github.com/chrsmutti/homer/releases) and put it
 anywhere in your executable path.
 
