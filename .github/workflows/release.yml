@@ -3,55 +3,36 @@ name: Release
 on:
   push:
     tags:
-      - "v*.*.*"
+      - v*
 
 jobs:
-  macOS:
-    runs-on: macOS-latest
+  release:
+    strategy:
+      matrix:
+        target: 
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: macOS-latest
+            target: x86_64-apple-darwin
+    runs-on: ${{ matrix.target.os }}
+    env:
+      TARGET: ${{ matrix.target.target }}
+      FILE: homer_${GITHUB_REF_NAME}_${TARGET}
     steps:
-      - uses: actions/checkout@v1
-
-      - name: Get version
-        id: get_version
-        run: echo ::set-output name=VERSION::${GITHUB_REF/refs\/tags\//}
+      - uses: actions/checkout@v4
 
       - name: Add target
-        run: rustup target add x86_64-apple-darwin
+        run: rustup target add 
 
       - name: Build
-        run: cargo build --release --target x86_64-apple-darwin
+        run: cargo build --release --target $TARGET
 
       - name: Rename binary
-        run: mv target/x86_64-apple-darwin/release/homer  homer_${{ steps.get_version.outputs.VERSION }}_x86_64-apple-darwin
+        run: mv target/$TARGET/release/homer $FILE 
 
       - name: Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
-          files: homer_${{ steps.get_version.outputs.VERSION }}_x86_64-apple-darwin
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  ubuntu:
-    runs-on: ubuntu-18.04
-    steps:
-      - uses: actions/checkout@v1
-
-      - name: Get version
-        id: get_version
-        run: echo ::set-output name=VERSION::${GITHUB_REF/refs\/tags\//}
-
-      - name: Add target
-        run: rustup target add x86_64-unknown-linux-gnu
-
-      - name: Build
-        run: cargo build --release --target x86_64-unknown-linux-gnu
-
-      - name: Rename binary
-        run: mv target/x86_64-unknown-linux-gnu/release/homer  homer_${{ steps.get_version.outputs.VERSION }}_x86_64-unknown-linux-gnu
-
-      - name: Release
-        uses: softprops/action-gh-release@v1
-        with:
-          files: homer_${{ steps.get_version.outputs.VERSION }}_x86_64-unknown-linux-gnu
+          files: $FILE
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
