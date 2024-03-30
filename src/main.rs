@@ -384,8 +384,8 @@ mod tests {
             }) => {
                 assert_eq!(p, path);
                 assert_eq!(d, dest);
-                assert_eq!(backup, false);
-                assert_eq!(replace, false);
+                assert!(!backup);
+                assert!(!replace);
             }
             _ => panic!("plan should be to link folder"),
         }
