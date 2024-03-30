@@ -17,18 +17,17 @@ jobs:
     runs-on: ${{ matrix.target.os }}
     env:
       TARGET: ${{ matrix.target.target }}
-      FILE: homer_${GITHUB_REF_NAME}_${TARGET}
     steps:
       - uses: actions/checkout@v4
 
       - name: Add target
-        run: rustup target add $TARGET
+        run: rustup target add ${TARGET}
 
       - name: Build
-        run: cargo build --release --target $TARGET
+        run: cargo build --release --target ${TARGET}
 
       - name: Rename binary
-        run: mv target/$TARGET/release/homer ${FILE} 
+        run: mv target/${TARGET}/release/homer homer_${GITHUB_REF_NAME}_${TARGET}
 
       - name: Release
         uses: softprops/action-gh-release@v2
