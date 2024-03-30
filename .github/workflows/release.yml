@@ -28,11 +28,11 @@ jobs:
         run: cargo build --release --target $TARGET
 
       - name: Rename binary
-        run: mv target/$TARGET/release/homer $FILE 
+        run: mv target/$TARGET/release/homer ${FILE} 
 
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
-          files: $FILE
+          files: homer_*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
