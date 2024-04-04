@@ -473,4 +473,25 @@ mod tests {
         assert!(plan.is_ok(), "everything should be fine");
         assert_eq!(plan.unwrap(), expected);
     }
+
+    #[test]
+    fn different_link() {
+        let path: PathBuf = "./testdata/different_link".into();
+        let dest: PathBuf = "./testdata/output".into();
+
+        let expected = Plan::Noop {
+            path: path.clone(),
+            dest: dest.clone(),
+            children: vec![Plan::Link {
+                path: path.join("different_link"),
+                dest: dest.join("different_link"),
+                backup: false,
+                replace: true,
+            }],
+        };
+
+        let plan = Plan::new(&path, &dest, false);
+        assert!(plan.is_ok(), "everything should be fine");
+        assert_eq!(plan.unwrap(), expected);
+    }
 }
