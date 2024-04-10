@@ -3,39 +3,40 @@ use std::process::Command;
 use std::{fs, io, os::unix};
 
 use anyhow::{anyhow, Context, Result};
+use clap::Parser;
 use crossterm::execute;
 use crossterm::style::{Attribute, Color, Print, SetAttribute, SetForegroundColor};
-use structopt::StructOpt;
 
 /// "Doh!" A CLI for managing your dotfiles!
-#[derive(StructOpt)]
-struct Opt {
+#[derive(Parser, Debug)]
+#[command(version, about)]
+struct Args {
     /// Force the program to run without prompting for confirmation.
-    #[structopt(short, long)]
+    #[arg(short, long)]
     force: bool,
 
     /// Disable backup, an action plan will be created, when other files block
     /// symlink creation they will be deleted instead of moved to a safe backup
     /// location.
-    #[structopt(long = "no-backup")]
+    #[arg(long)]
     no_backup: bool,
 
     /// Directory containing scripts that will be run after the plan is completed.
     /// If force flag is passed, no confirmation prompt will be shown.
-    #[structopt(long, parse(from_os_str))]
+    #[arg(long)]
     scripts: Option<PathBuf>,
 
     /// Directory containing files to link into user's home directory.
-    #[structopt(short, long, parse(from_os_str), default_value = "./home")]
+    #[arg(short, long, default_value = ".")]
     input: PathBuf,
 
     /// Directory the files will be linked to, defaults to $HOME.
-    #[structopt(short, long, parse(from_os_str), env = "HOME")]
+    #[structopt(short, long, env = "HOME")]
     output: PathBuf,
 }
 
 fn main() -> Result<()> {
-    let opt = Opt::from_args();
+    let opt = Args::parse();
 
     run_linking(opt.input, opt.output, !opt.no_backup, opt.force)?;
 
@@ -201,6 +202,8 @@ impl Plan {
             anyhow::bail!("{:?} does not exist", path);
         }
 
+        let dest_exists_or_is_link = dest.exists() || std::fs::read_link(dest).is_ok();
+
         // When the current path denotes a directory, we should recurse into
         // it's entries and add them to the action plan accordingly.
         let mut children = Vec::new();
@@ -215,31 +218,55 @@ impl Plan {
 
                 children.push(Plan::new(&entry.path(), &dest, backup)?);
             }
+
+            if dest.is_dir() {
+                return Ok(Plan::Noop {
+                    path: path.into(),
+                    dest: dest.into(),
+                    children,
+                });
+            } else {
+                return Ok(Plan::Link {
+                    path: path.into(),
+                    dest: dest.into(),
+                    backup,
+                    replace: dest_exists_or_is_link,
+                });
+            }
         }
 
-        // Check `path` and `dest` equality when both are directories.
-        let dir_equality = dest.exists() && path.is_dir() && dest.is_dir();
+        // At this point we know that dest is a file and should have a parent.
+        let mut dest_parent = dest.parent().expect("dest to have a parent").to_path_buf();
+        let canonicalized_dest = match std::fs::read_link(dest) {
+            Ok(dest) => {
+                if dest.is_absolute() {
+                    dest.canonicalize().ok()
+                } else {
+                    dest_parent.push(dest);
+                    dest_parent.canonicalize().ok()
+                }
+            }
+            Err(_) => None,
+        };
 
-        // When dealing with files, they will be equal if their `path`s canonicalized
-        // are equal, meaning that `dest` is a link to `path`.
-        let file_equality =
-            dest.exists() & path.is_file() && path.canonicalize()? == dest.canonicalize()?;
+        let canonicalized_path = path
+            .canonicalize()
+            .context(format!("failed to canonicalize {path:?}"))?;
 
-        // If they're equal, no action is needed.
-        if dir_equality || file_equality {
-            return Ok(Plan::Noop {
+        if canonicalized_dest.is_some() && canonicalized_dest.unwrap() == canonicalized_path {
+            Ok(Plan::Noop {
                 path: path.into(),
                 dest: dest.into(),
                 children,
-            });
+            })
+        } else {
+            Ok(Plan::Link {
+                backup,
+                replace: dest_exists_or_is_link,
+                path: path.into(),
+                dest: dest.into(),
+            })
         }
-
-        Ok(Plan::Link {
-            backup,
-            path: path.into(),
-            dest: dest.into(),
-            replace: dest.exists(),
-        })
     }
 
     /// Check if an action plan is empty, this is done by checking if the plan is `Plan::Noop`,
@@ -369,6 +396,7 @@ mod tests {
         );
         assert!(plan.is_err(), "input path should not exist");
     }
+
     #[test]
     fn missing_output() {
         let path: PathBuf = "./testdata/simple".into();
@@ -382,10 +410,10 @@ mod tests {
                 backup,
                 replace,
             }) => {
-                assert_eq!(p, path);
-                assert_eq!(d, dest);
-                assert!(!backup);
-                assert!(!replace);
+                assert_eq!(p, path, "the path should be the same as input");
+                assert_eq!(d, dest, "the desitnation should be the new folder");
+                assert!(!backup, "the input asked for no backup");
+                assert!(!replace, "should not replace something that does not exist");
             }
             _ => panic!("plan should be to link folder"),
         }
@@ -409,7 +437,11 @@ mod tests {
 
         let plan = Plan::new(&path, &dest, false);
         assert!(plan.is_ok(), "everything should be fine");
-        assert_eq!(plan.unwrap(), expected);
+        assert_eq!(
+            plan.unwrap(),
+            expected,
+            "the output should link, but not be replaced as it does not exist"
+        );
     }
 
     #[test]
@@ -429,7 +461,11 @@ mod tests {
 
         let plan = Plan::new(&path, &dest, false);
         assert!(plan.is_ok(), "everything should be fine");
-        assert_eq!(plan.unwrap(), expected);
+        assert_eq!(
+            plan.unwrap(),
+            expected,
+            "the output should be noop, as the link already points to the input"
+        );
     }
 
     #[test]
@@ -450,7 +486,11 @@ mod tests {
 
         let plan = Plan::new(&path, &dest, false);
         assert!(plan.is_ok(), "everything should be fine");
-        assert_eq!(plan.unwrap(), expected);
+        assert_eq!(
+            plan.unwrap(),
+            expected,
+            "the output should be replaced as it does not match the input"
+        );
     }
 
     #[test]
@@ -471,7 +511,11 @@ mod tests {
 
         let plan = Plan::new(&path, &dest, false);
         assert!(plan.is_ok(), "everything should be fine");
-        assert_eq!(plan.unwrap(), expected);
+        assert_eq!(
+            plan.unwrap(),
+            expected,
+            "the output should be replaced as it does not match the input type"
+        );
     }
 
     #[test]
@@ -482,16 +526,29 @@ mod tests {
         let expected = Plan::Noop {
             path: path.clone(),
             dest: dest.clone(),
-            children: vec![Plan::Link {
-                path: path.join("different_link"),
-                dest: dest.join("different_link"),
-                backup: false,
-                replace: true,
-            }],
+            children: vec![
+                Plan::Link {
+                    path: path.join("different_link"),
+                    dest: dest.join("different_link"),
+                    backup: false,
+                    replace: true,
+                },
+                Plan::Link {
+                    path: path.join("different_link_broken"),
+                    dest: dest.join("different_link_broken"),
+                    backup: false,
+                    replace: true,
+                },
+            ],
         };
 
         let plan = Plan::new(&path, &dest, false);
+        println!("{:?}", plan);
         assert!(plan.is_ok(), "everything should be fine");
-        assert_eq!(plan.unwrap(), expected);
+        assert_eq!(
+            plan.unwrap(),
+            expected,
+            "the output should be repalced in both cases as it does not link to the input"
+        );
     }
 }
